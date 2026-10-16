@@ -1,4 +1,6 @@
+
 import sqlite3
+from datetime import datetime, timedelta, timezone
 
 DATABASE_NAME = "bankfraud.db"
 
@@ -10,8 +12,10 @@ def get_connection():
 
 def create_transactions_table():
     connection = get_connection()
+
     try:
-        connection.execute("""
+        connection.execute(
+            """
             CREATE TABLE IF NOT EXISTS transactions (
                 transaction_id TEXT PRIMARY KEY,
                 account_id TEXT NOT NULL,
@@ -21,10 +25,21 @@ def create_transactions_table():
                 country TEXT NOT NULL,
                 transaction_time TEXT NOT NULL
             )
-        """)
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_transactions_account_id
+            ON transactions (account_id)
+            """
+        )
+
         connection.commit()
     finally:
         connection.close()
+
+
 def save_transaction(
     transaction_id,
     account_id,
@@ -64,8 +79,6 @@ def save_transaction(
     finally:
         connection.close()
 
-from datetime import datetime, timedelta, timezone
-
 
 def count_recent_transactions(account_id: str) -> int:
     current_time = datetime.now(timezone.utc)
@@ -74,23 +87,21 @@ def count_recent_transactions(account_id: str) -> int:
     connection = get_connection()
 
     try:
-        rows = connection.execute(
+        result = connection.execute(
             """
-            SELECT transaction_time
+            SELECT COUNT(*)
             FROM transactions
             WHERE account_id = ?
+              AND julianday(transaction_time) >= julianday(?)
+              AND julianday(transaction_time) <= julianday(?)
             """,
-            (account_id,)
-        ).fetchall()
+            (
+                account_id,
+                ten_minutes_ago.isoformat(),
+                current_time.isoformat()
+            )
+        ).fetchone()
+
+        return result[0]
     finally:
         connection.close()
-
-    count = 0
-
-    for row in rows:
-        transaction_time = datetime.fromisoformat(row[0])
-
-        if ten_minutes_ago <= transaction_time <= current_time:
-            count += 1
-
-    return count
