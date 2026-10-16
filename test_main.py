@@ -57,3 +57,39 @@ def test_invalid_transaction_amount():
     assert response.json()["detail"][0]["loc"] == [
         "body", "amount"
     ]
+
+def test_international_transaction():
+    transaction = {
+        "transaction_id": "TXN1008",
+        "account_id": "ACC1001",
+        "amount": 500,
+        "merchant": "Online Store",
+        "location": "Hyderabad",
+        "country": "IN"
+    }
+
+    response = client.post(
+        "/transactions/analyze",
+        json=transaction
+    )
+
+    assert response.status_code == 200
+    assert response.json()["risk_level"] == "MEDIUM"
+
+def test_high_value_international_transaction():
+    transaction = {
+        "transaction_id": "TXN1009",
+        "account_id": "ACC1001",
+        "amount": 25000,
+        "merchant": "Electronics Store",
+        "location": "Hyderabad",
+        "country": "IN"
+    }
+
+    response = client.post(
+        "/transactions/analyze",
+        json=transaction
+    )
+
+    assert response.status_code == 200
+    assert response.json()["risk_level"] == "HIGH"

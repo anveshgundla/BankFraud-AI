@@ -1,6 +1,9 @@
 
 from fastapi import FastAPI
-from fraud_rules import check_transaction_amount
+from fraud_rules import (
+    check_transaction_amount,
+    check_international_transaction,
+)
 
 app = FastAPI(
     title="BankFraud AI",
@@ -26,15 +29,27 @@ class Transaction(BaseModel):
     amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
     merchant: str
     location: str
+    country: str = "US"
 
 
 
-@app.post("/transactions/analyze")
+
 @app.post("/transactions/analyze")
 def analyze_transaction(transaction: Transaction):
-    result = check_transaction_amount(transaction.amount)
-    risk_level = result["risk_level"]
-    reason = result["reason"]
+    amount_result = check_transaction_amount(transaction.amount)
+    country_result = check_international_transaction(transaction.country)
+
+    risk_priority = {"LOW": 1, "MEDIUM": 2, "HIGH": 3}
+
+    risk_level = max(
+        [amount_result["risk_level"], country_result["risk_level"]],
+        key=lambda level: risk_priority[level]
+    )
+
+    reason = "; ".join([
+        amount_result["reason"],
+        country_result["reason"]
+    ])
 
     return {
         "transaction_id": transaction.transaction_id,
@@ -46,19 +61,3 @@ def analyze_transaction(transaction: Transaction):
         "reason": reason
     }
 
-def test_low_risk_transaction():
-    transaction = {
-        "transaction_id": "TXN1006",
-        "account_id": "ACC1001",
-        "amount": 500,
-        "merchant": "Grocery Store",
-        "location": "Minnesota"
-    }
-
-    response = client.post(
-        "/transactions/analyze",
-        json=transaction
-    )
-
-    assert response.status_code == 200
-    assert response.json()["risk_level"] == "LOW"

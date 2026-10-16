@@ -15,3 +15,5 @@ def test_amount_at_threshold():
 def test_amount_below_threshold():
     result = check_transaction_amount(Decimal("500.00"))
     assert result["risk_level"] == "LOW"
+
+
