@@ -1,5 +1,6 @@
 
 from fastapi import FastAPI
+from fraud_rules import check_transaction_amount
 
 app = FastAPI(
     title="BankFraud AI",
@@ -29,14 +30,11 @@ class Transaction(BaseModel):
 
 
 @app.post("/transactions/analyze")
+@app.post("/transactions/analyze")
 def analyze_transaction(transaction: Transaction):
-
-    if transaction.amount > 10000:
-        risk_level = "HIGH"
-        reason = "Transaction exceeds the configured amount threshold"
-    else:
-        risk_level = "LOW"
-        reason = "Transaction is within the configured amount threshold"
+    result = check_transaction_amount(transaction.amount)
+    risk_level = result["risk_level"]
+    reason = result["reason"]
 
     return {
         "transaction_id": transaction.transaction_id,
