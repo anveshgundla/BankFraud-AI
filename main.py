@@ -1,9 +1,12 @@
 
+import sqlite3
+from datetime import datetime, timezone
 from decimal import Decimal
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from database import count_recent_transactions, save_transaction
 from fraud_rules import (
     check_transaction_amount,
     check_international_transaction,
@@ -40,9 +43,9 @@ class Transaction(BaseModel):
 def analyze_transaction(transaction: Transaction):
     amount_result = check_transaction_amount(transaction.amount)
     country_result = check_international_transaction(transaction.country)
-    velocity_result = check_transaction_velocity(
-        transaction.transactions_last_10_minutes
-    )
+
+    recent_count = count_recent_transactions(transaction.account_id)
+    velocity_result = check_transaction_velocity(recent_count)
 
     risk_priority = {"LOW": 1, "MEDIUM": 2, "HIGH": 3}
 
@@ -60,6 +63,23 @@ def analyze_transaction(transaction: Transaction):
         country_result["reason"],
         velocity_result["reason"]
     ])
+
+    # Save transaction and handle duplicate transaction IDs.
+    try:
+        save_transaction(
+            transaction_id=transaction.transaction_id,
+            account_id=transaction.account_id,
+            amount=transaction.amount,
+            merchant=transaction.merchant,
+            location=transaction.location,
+            country=transaction.country,
+            transaction_time=datetime.now(timezone.utc).isoformat()
+        )
+    except sqlite3.IntegrityError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Transaction ID already exists"
+        ) from exc
 
     return {
         "transaction_id": transaction.transaction_id,

@@ -1,8 +1,19 @@
 
+import sqlite3
+from unittest.mock import patch
+
+import pytest
 from fastapi.testclient import TestClient
 from main import app
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def mock_transaction_saving():
+    """Prevent API tests from writing to the real SQLite database."""
+    with patch("main.save_transaction"):
+        yield
 
 
 def test_high_risk_transaction():
@@ -14,13 +25,12 @@ def test_high_risk_transaction():
         "location": "New York"
     }
 
-    response = client.post(
-        "/transactions/analyze",
-        json=transaction
-    )
+    with patch("main.count_recent_transactions", return_value=0):
+        response = client.post("/transactions/analyze", json=transaction)
 
     assert response.status_code == 200
     assert response.json()["risk_level"] == "HIGH"
+
 
 def test_low_risk_transaction():
     transaction = {
@@ -31,13 +41,12 @@ def test_low_risk_transaction():
         "location": "Minnesota"
     }
 
-    response = client.post(
-        "/transactions/analyze",
-        json=transaction
-    )
+    with patch("main.count_recent_transactions", return_value=0):
+        response = client.post("/transactions/analyze", json=transaction)
 
     assert response.status_code == 200
     assert response.json()["risk_level"] == "LOW"
+
 
 def test_invalid_transaction_amount():
     transaction = {
@@ -48,15 +57,11 @@ def test_invalid_transaction_amount():
         "location": "Minnesota"
     }
 
-    response = client.post(
-        "/transactions/analyze",
-        json=transaction
-    )
+    response = client.post("/transactions/analyze", json=transaction)
 
     assert response.status_code == 422
-    assert response.json()["detail"][0]["loc"] == [
-        "body", "amount"
-    ]
+    assert response.json()["detail"][0]["loc"] == ["body", "amount"]
+
 
 def test_international_transaction():
     transaction = {
@@ -68,13 +73,12 @@ def test_international_transaction():
         "country": "IN"
     }
 
-    response = client.post(
-        "/transactions/analyze",
-        json=transaction
-    )
+    with patch("main.count_recent_transactions", return_value=0):
+        response = client.post("/transactions/analyze", json=transaction)
 
     assert response.status_code == 200
     assert response.json()["risk_level"] == "MEDIUM"
+
 
 def test_high_value_international_transaction():
     transaction = {
@@ -86,10 +90,12 @@ def test_high_value_international_transaction():
         "country": "IN"
     }
 
-    response = client.post(
-        "/transactions/analyze",
-        json=transaction
-    )
+    with patch("main.count_recent_transactions", return_value=0):
+        response = client.post("/transactions/analyze", json=transaction)
+
+    assert response.status_code == 200
+    assert response.json()["risk_level"] == "HIGH"
+
 
 def test_high_velocity_transaction():
     transaction = {
@@ -98,13 +104,38 @@ def test_high_velocity_transaction():
         "amount": 500,
         "merchant": "Grocery Store",
         "location": "Minnesota",
-        "country": "US",
-        "transactions_last_10_minutes": 6
+        "country": "US"
     }
 
-    response = client.post("/transactions/analyze", json=transaction)
+    with patch("main.count_recent_transactions", return_value=6):
+        response = client.post("/transactions/analyze", json=transaction)
 
     assert response.status_code == 200
     assert response.json()["risk_level"] == "HIGH"
     assert "High transaction frequency detected" in response.json()["reason"]
 
+
+def test_duplicate_transaction_id():
+    transaction = {
+        "transaction_id": "TXN-DUPLICATE-001",
+        "account_id": "ACC-TEST-2001",
+        "amount": 750,
+        "merchant": "Grocery Store",
+        "location": "Minnesota",
+        "country": "US"
+    }
+
+    with patch("main.count_recent_transactions", return_value=0):
+        with patch(
+            "main.save_transaction",
+            side_effect=sqlite3.IntegrityError(
+                "UNIQUE constraint failed: transactions.transaction_id"
+            )
+        ):
+            response = client.post(
+                "/transactions/analyze",
+                json=transaction
+            )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Transaction ID already exists"
