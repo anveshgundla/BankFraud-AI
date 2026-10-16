@@ -105,3 +105,30 @@ def count_recent_transactions(account_id: str) -> int:
         return result[0]
     finally:
         connection.close()
+
+
+def get_transactions_by_account(account_id: str):
+    connection = get_connection()
+    connection.row_factory = sqlite3.Row
+
+    try:
+        rows = connection.execute(
+            """
+            SELECT
+                transaction_id,
+                account_id,
+                amount,
+                merchant,
+                location,
+                country,
+                transaction_time
+            FROM transactions
+            WHERE account_id = ?
+            ORDER BY transaction_time DESC
+            """,
+            (account_id,)
+        ).fetchall()
+
+        return [dict(row) for row in rows]
+    finally:
+        connection.close()

@@ -139,3 +139,29 @@ def test_duplicate_transaction_id():
 
     assert response.status_code == 409
     assert response.json()["detail"] == "Transaction ID already exists"
+def test_get_account_transactions():
+    mock_transactions = [
+        {
+            "transaction_id": "TXN-1001",
+            "account_id": "ACC-1001",
+            "amount": "750",
+            "merchant": "Grocery Store",
+            "location": "Minnesota",
+            "country": "US",
+            "transaction_time": "2026-10-16T20:42:48+00:00"
+        }
+    ]
+
+    with patch(
+        "main.get_transactions_by_account",
+        return_value=mock_transactions
+    ):
+        response = client.get("/transactions/ACC-1001")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["account_id"] == "ACC-1001"
+    assert data["total_transactions"] == 1
+    assert data["transactions"][0]["transaction_id"] == "TXN-1001"
