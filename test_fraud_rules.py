@@ -17,3 +17,9 @@ def test_amount_below_threshold():
     assert result["risk_level"] == "LOW"
 
 
+def test_high_transaction_velocity():
+    from fraud_rules import check_transaction_velocity
+
+    result = check_transaction_velocity(6)
+
+    assert result["risk_level"] == "HIGH"

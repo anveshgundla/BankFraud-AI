@@ -26,3 +26,14 @@ def check_international_transaction(country: str) -> dict:
         "risk_level": "LOW",
         "reason": "Domestic transaction"
     }
+def check_transaction_velocity(transactions_last_10_minutes: int) -> dict:
+    if transactions_last_10_minutes >= 5:
+        return {
+            "risk_level": "HIGH",
+            "reason": "High transaction frequency detected within 10 minutes"
+        }
+
+    return {
+        "risk_level": "LOW",
+        "reason": "Transaction frequency is within the configured limit"
+    }

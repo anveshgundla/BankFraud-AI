@@ -91,5 +91,20 @@ def test_high_value_international_transaction():
         json=transaction
     )
 
+def test_high_velocity_transaction():
+    transaction = {
+        "transaction_id": "TXN-006",
+        "account_id": "ACC-1001",
+        "amount": 500,
+        "merchant": "Grocery Store",
+        "location": "Minnesota",
+        "country": "US",
+        "transactions_last_10_minutes": 6
+    }
+
+    response = client.post("/transactions/analyze", json=transaction)
+
     assert response.status_code == 200
     assert response.json()["risk_level"] == "HIGH"
+    assert "High transaction frequency detected" in response.json()["reason"]
+
