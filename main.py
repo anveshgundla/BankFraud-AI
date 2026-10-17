@@ -4,6 +4,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from database import (
@@ -13,6 +14,7 @@ from database import (
     save_fraud_alert,
     get_fraud_alerts,
     get_dashboard_summary,
+    update_fraud_alert_status,
 )
 
 from fraud_rules import (
@@ -26,11 +28,26 @@ from fraud_alerts import (
     create_fraud_alert,
 )
 
+from fraud_agent import fraud_investigation_agent
+
 
 app = FastAPI(
     title="BankFraud AI",
     description="AI-powered banking fraud investigation platform",
     version="1.0.0"
+)
+
+
+# Allow the React frontend to access FastAPI.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PATCH"],
+    allow_headers=["Content-Type"],
 )
 
 
@@ -209,3 +226,93 @@ def get_all_fraud_alerts():
 def dashboard_summary():
 
     return get_dashboard_summary()
+
+
+# Request model for updating a fraud alert.
+class FraudAlertStatusUpdate(BaseModel):
+    status: str
+
+
+# Update the investigation status of a fraud alert.
+@app.patch("/fraud-alerts/{transaction_id}/status")
+def change_fraud_alert_status(
+    transaction_id: str,
+    request: FraudAlertStatusUpdate
+):
+    try:
+        updated_alert = update_fraud_alert_status(
+            transaction_id=transaction_id,
+            new_status=request.status
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc)
+        ) from exc
+
+    if updated_alert is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Fraud alert not found"
+        )
+
+    return {
+        "message": "Fraud alert status updated successfully",
+        "alert": updated_alert
+    }
+
+
+# Run LangGraph fraud investigation for a saved alert.
+@app.get("/fraud-alerts/{transaction_id}/investigate")
+def investigate_fraud_alert(transaction_id: str):
+
+    # Reuse the existing database function.
+    alerts = get_fraud_alerts()
+
+    # Find the requested fraud alert.
+    matching_alert = next(
+        (
+            alert
+            for alert in alerts
+            if alert["transaction_id"] == transaction_id
+        ),
+        None
+    )
+
+    if matching_alert is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Fraud alert not found"
+        )
+
+    # Prepare the LangGraph workflow input.
+    investigation_input = {
+        "transaction_id": matching_alert["transaction_id"],
+        "account_id": matching_alert["account_id"],
+        "risk_level": matching_alert["risk_level"],
+        "risk_score": matching_alert["risk_score"],
+        "reason": matching_alert["reason"],
+        "fraud_indicators": [],
+        "recommendation": "",
+        "investigation_summary": ""
+    }
+
+    # Execute the LangGraph workflow.
+    investigation_result = fraud_investigation_agent.invoke(
+        investigation_input
+    )
+
+    return {
+        "transaction_id": investigation_result["transaction_id"],
+        "account_id": investigation_result["account_id"],
+        "risk_level": investigation_result["risk_level"],
+        "risk_score": investigation_result["risk_score"],
+        "fraud_indicators": investigation_result["fraud_indicators"],
+        "recommendation": investigation_result["recommendation"],
+        "investigation_summary": investigation_result[
+            "investigation_summary"
+        ],
+        "alert_status": matching_alert["status"],
+        "investigation_type": "RULE_BASED_LANGGRAPH"
+    }

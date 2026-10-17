@@ -287,3 +287,61 @@ def get_dashboard_summary():
 
     finally:
         connection.close()
+
+
+# Update the investigation status of an existing fraud alert.
+def update_fraud_alert_status(
+    transaction_id: str,
+    new_status: str
+) -> dict | None:
+
+    allowed_statuses = {
+        "OPEN",
+        "UNDER_REVIEW",
+        "RESOLVED"
+    }
+
+    if new_status not in allowed_statuses:
+        raise ValueError(
+            "Invalid status. Allowed values: "
+            "OPEN, UNDER_REVIEW, RESOLVED"
+        )
+
+    connection = get_connection()
+    connection.row_factory = sqlite3.Row
+
+    try:
+        cursor = connection.execute(
+            """
+            UPDATE fraud_alerts
+            SET status = ?
+            WHERE transaction_id = ?
+            """,
+            (new_status, transaction_id)
+        )
+
+        if cursor.rowcount == 0:
+            return None
+
+        connection.commit()
+
+        row = connection.execute(
+            """
+            SELECT
+                transaction_id,
+                account_id,
+                risk_level,
+                risk_score,
+                reason,
+                status,
+                created_at
+            FROM fraud_alerts
+            WHERE transaction_id = ?
+            """,
+            (transaction_id,)
+        ).fetchone()
+
+        return dict(row) if row else None
+
+    finally:
+        connection.close()
